@@ -7,15 +7,19 @@ import { ApiResponse } from "../utils/ApiResponse.js"
 const generateAccessAndRefreshTokens = async (userId) => {
     try {
         const user = await User.findById(userId)
+        if (!user) {
+            throw new ApiError(404, "User not found")
+        }
+
         const accessToken = user.generateAccessToken()
         const refreshToken = user.generateRefreshToken()
 
         user.refreshToken = refreshToken
-        await user.save({ validatedBeforeSave: false });
-
+        await user.save({ validateBeforeSave: false });
         return { accessToken, refreshToken }
 
     } catch (error) {
+        console.log("ACTUAL ERROR:", error);
         throw new ApiError(500, 'Something went wrong while generating refresh or  Server Error')
     }
 }
@@ -115,11 +119,11 @@ const loginUser = asyncHandler(async (req, res) => {
     */
     const { email, username, password } = req.body
 
-    if (!email || !username) {
+    if (!(email || username)) {
         throw new ApiError(400, 'username or email is required')
     }
 
-    const user = User.findOne({
+    const user = await User.findOne({
         $or: [{ email }, { username }]
     })
     if (!user) {
@@ -135,8 +139,8 @@ const loginUser = asyncHandler(async (req, res) => {
     const { accessToken, refreshToken } = await
         generateAccessAndRefreshTokens(user._id);
 
-    const loggedInUser = User.findById(user._id).
-        select("-password -refreshToken");
+    const loggedInUser = await User.findById(user._id)
+        .select("-password -refreshToken");
 
     const options = {
         httpOnly: true,
@@ -151,12 +155,14 @@ const loginUser = asyncHandler(async (req, res) => {
             new ApiResponse(
                 200,
                 {
-                    user: loggedInUser, accessToken,
+                    user: loggedInUser,
+                    accessToken,
                     refreshToken
                 },
                 "User logged In Successfully"
             )
         )
+
 })
 
 const logoutUser = asyncHandler(async (req, res) => {
@@ -180,10 +186,10 @@ const logoutUser = asyncHandler(async (req, res) => {
         secure: true
     }
     return res
-    .status(200)
-    .clearCookies("accessToken",options)
-    .clearCookies("refreshToken",options)
-    .json(new ApiResponse(200,{},"User logged Out"))
+        .status(200)
+        .clearCookie("accessToken", options)
+        .clearCookie("refreshToken", options)
+        .json(new ApiResponse(200, {}, "User logged Out"))
 
 })
 
